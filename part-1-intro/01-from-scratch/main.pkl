@@ -1,0 +1,197 @@
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/managedidentity/userassignedidentity.pkl"
+import "@azure/authorization/roleassignment.pkl"
+import "@azure/sql/server.pkl"
+import "@azure/sql/sqldatabase.pkl"
+import "@azure/network/privatednszone.pkl"
+import "@azure/network/privatednsvnetlink.pkl"
+import "@azure/network/privateendpoint.pkl"
+import "@azure/network/privatednszonegroup.pkl"
+
+import "./vars.pkl"
+
+description {
+    text = "Formae demo: Azure SQL with a User-Assigned MI as Entra-only admin, locked down behind a Private Endpoint — all chained via .res references."
+    confirm = true
+}
+
+properties {
+    location = new formae.Prop {
+        flag = "location"
+        default = "westeurope"
+    }
+    instance = new formae.Prop {
+        flag = "instance"
+        default = "001"
+    }
+    dbSku = new formae.Prop {
+        flag = "db-sku"
+        default = "Basic"
+    }
+}
+
+local stackLocation: vars.AllowedLocation = properties.location.value
+local stackInstance: String(matches(Regex(#"^\d{3}$"#))) = properties.instance.value
+local dbSkuName: vars.AllowedDbSku = properties.dbSku.value
+
+local dbSkuTier: String = if (dbSkuName == "Basic") "Basic" else "Standard"
+
+local suffix = "\(vars.workload)-\(vars.environment)-\(stackInstance)"
+
+local roleDefinitions = new {
+    Reader = "/subscriptions/\(vars.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
+    Contributor = "/subscriptions/\(vars.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
+    Owner = "/subscriptions/\(vars.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635"
+}
+
+forma {
+    new formae.Stack {
+        label = vars.stackName
+        description = "Persistent stack for the demo; resources here are billed."
+    }
+
+    new formae.Target {
+        label = "azure-\(stackLocation)"
+        discoverable = true
+        config = new azure.Config {
+            subscriptionId = vars.subscriptionId
+        }
+    }
+
+    local rg = new resourcegroup.ResourceGroup {
+        label = "rg-\(suffix)"
+        name = label
+        location = stackLocation
+    }
+
+    rg
+
+    local mi = new userassignedidentity.UserAssignedIdentity {
+        label = "id-\(suffix)"
+        name = label
+        location = rg.location
+        resourceGroupName = rg.res.name
+    }
+
+    mi
+
+    new roleassignment.RoleAssignment {
+        label = "ra-\(suffix)-mi-reader-rg"
+        scope = rg.res.id
+        principalId = mi.res.principalId
+        principalType = "ServicePrincipal"
+        roleDefinitionId = roleDefinitions.Reader
+        description = "Demo: MI gets Reader on the resource group"
+    }
+
+    local sqlServer = new server.Server {
+        label = "sql-\(suffix)"
+        name = label
+        location = rg.location
+        resourceGroupName = rg.res.name
+        version = "12.0"
+        minimalTlsVersion = "1.2"
+        publicNetworkAccess = "Disabled"
+        identity = new server.Identity {
+            type = "SystemAssigned"
+        }
+        administrators = new server.Administrators {
+            login = mi.label
+            sid = mi.res.principalId
+            tenantId = mi.res.tenantId
+            principalType = "Application"
+            azureADOnlyAuthentication = true
+        }
+    }
+
+    sqlServer
+
+    new sqldatabase.Database {
+        label = "sqldb-appdb"
+        name = "appdb"
+        location = rg.location
+        resourceGroupName = rg.res.name
+        serverName = sqlServer.res.name
+        sku = new sqldatabase.SKU {
+            name = dbSkuName
+            tier = dbSkuTier
+        }
+    }
+
+    local vnet = new virtualnetwork.VirtualNetwork {
+        label = "vnet-\(suffix)"
+        name = label
+        location = rg.location
+        resourceGroupName = rg.res.name
+        addressSpace = new virtualnetwork.AddressSpace {
+            addressPrefixes = new Listing { "10.10.0.0/16" }
+        }
+    }
+
+    vnet
+
+    local snet = new subnet.Subnet {
+        label = "snet-pe-\(suffix)"
+        name = label
+        resourceGroupName = rg.res.name
+        virtualNetworkName = vnet.res.name
+        addressPrefix = "10.10.1.0/24"
+    }
+
+    snet
+
+    local dnsZone = new privatednszone.PrivateDnsZone {
+        label = "pdz-sql-\(suffix)"
+        name = "privatelink.database.windows.net"
+        location = "global"
+        resourceGroupName = rg.res.name
+    }
+
+    dnsZone
+
+    new privatednsvnetlink.PrivateDnsZoneVirtualNetworkLink {
+        label = "pdzvnl-\(suffix)"
+        name = "link-\(suffix)"
+        location = "global"
+        resourceGroupName = rg.res.name
+        privateZoneName = dnsZone.res.name
+        virtualNetworkId = vnet.res.id
+        registrationEnabled = false
+    }
+
+    local pe = new privateendpoint.PrivateEndpoint {
+        label = "pe-sql-\(suffix)"
+        name = label
+        location = rg.location
+        resourceGroupName = rg.res.name
+        subnetId = snet.res.id
+        privateLinkServiceConnections = new Listing {
+            new privateendpoint.PrivateLinkServiceConnection {
+                name = "sql-connection"
+                privateLinkServiceId = sqlServer.res.id
+                groupIds = new Listing { "sqlServer" }
+            }
+        }
+    }
+
+    pe
+
+    new privatednszonegroup.PrivateDnsZoneGroup {
+        label = "pdzg-sql-\(suffix)"
+        name = "default"
+        resourceGroupName = rg.res.name
+        privateEndpointName = pe.res.name
+        privateDnsZoneConfigs = new Listing {
+            new privatednszonegroup.PrivateDnsZoneConfig {
+                name = "sql-config"
+                privateDnsZoneId = dnsZone.res.id
+            }
+        }
+    }
+}
