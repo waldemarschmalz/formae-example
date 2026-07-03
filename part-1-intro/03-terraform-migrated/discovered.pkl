@@ -1,0 +1,231 @@
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+// Resource imports
+import "@azure/managedidentity/userassignedidentity.pkl" as userassignedidentity
+import "@azure/network/networkinterface.pkl" as networkinterface
+import "@azure/network/privatednszonegroup.pkl" as privatednszonegroup
+import "@azure/network/privatednsvnetlink.pkl" as privatednsvnetlink
+import "@azure/network/privateendpoint.pkl" as privateendpoint
+import "@azure/resources/subnet.pkl" as subnet
+import "@azure/resources/virtualnetwork.pkl" as virtualnetwork
+import "@azure/resources/resourcegroup.pkl" as resourcegroup
+import "@azure/sql/sqldatabase.pkl" as sqldatabase
+import "@azure/sql/server.pkl" as server
+import "@azure/azure.pkl" as azure
+import "@azure/authorization/roleassignment.pkl" as roleassignment
+import "@azure/network/privatednszone.pkl" as privatednszone
+
+forma {
+
+  local myStack = new formae.Stack {
+    // Please provide a stack to bring the resources in this Forma under management
+    label = "stack-tf-migration-dev"
+    description = "Unmanaged resources"
+  }
+  myStack
+
+
+  local bootstrapTargetAzure = new formae.Target {
+    label = "bootstrap-target-azure"
+    namespace = "AZURE"
+    discoverable = true
+    config {
+      Type = "Azure"
+      SubscriptionId = "7edc05f9-f6d6-451d-a516-8a6d4160986a"
+    }
+  }
+  bootstrapTargetAzure
+
+  new userassignedidentity.UserAssignedIdentity {
+    label = "id-tf-demo-dev-002"
+    name = "id-tf-demo-dev-002"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002" // The target resource with the label = "rg-tf-demo-dev-002" of type = "AZURE::Resources::ResourceGroup" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    tenantId = "77347a0d-fdb5-4c51-9172-aaacde3216d4"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new networkinterface.NetworkInterface {
+    label = "pe-sql-tf-demo-dev-002.nic.11336f1a-0e48-498c-9567-36c2139f1adf"
+    name = "pe-sql-tf-demo-dev-002.nic.11336f1a-0e48-498c-9567-36c2139f1adf"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002" // The target resource with the label = "rg-tf-demo-dev-002" of type = "AZURE::Resources::ResourceGroup" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    ipConfigurations = new Listing { new networkinterface.IPConfiguration {
+        name = "privateEndpointIpConfig.488a273b-0c68-41ae-88c0-c20610bd0955"
+        subnet = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-002/providers/Microsoft.Network/virtualNetworks/vnet-tf-demo-dev-002/subnets/snet-pe-tf-demo-dev-002"
+        privateIPAllocationMethod = "Dynamic"
+        primary = true
+      } }
+    enableAcceleratedNetworking = false
+    enableIPForwarding = false
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new privatednszonegroup.PrivateDnsZoneGroup {
+    label = "rg-tf-demo-dev-002-default"
+    name = "default"
+    resourceGroupName = "rg-tf-demo-dev-002"
+    privateEndpointName = "pe-sql-tf-demo-dev-002"
+    privateDnsZoneConfigs = new Listing { new privatednszonegroup.PrivateDnsZoneConfig {
+        name = "privatelink.database.windows.net"
+        privateDnsZoneId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-002/providers/Microsoft.Network/privateDnsZones/privatelink.database.windows.net"
+      } }
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new privatednsvnetlink.PrivateDnsZoneVirtualNetworkLink {
+    label = "link-tf-demo-dev-002"
+    name = "link-tf-demo-dev-002"
+    location = "global"
+    resourceGroupName = "rg-tf-demo-dev-002" // The target resource with the label = "privatelink.database.windows.net-5" of type = "AZURE::Network::PrivateDnsZone" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    privateZoneName = "privatelink.database.windows.net" // The target resource with the label = "privatelink.database.windows.net-5" of type = "AZURE::Network::PrivateDnsZone" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    virtualNetworkId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-002/providers/Microsoft.Network/virtualNetworks/vnet-tf-demo-dev-002"
+    registrationEnabled = false
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new privateendpoint.PrivateEndpoint {
+    label = "rg-tf-demo-dev-002-pe-sql-tf-demo-dev-002"
+    name = "pe-sql-tf-demo-dev-002"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002"
+    subnetId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-002/providers/Microsoft.Network/virtualNetworks/vnet-tf-demo-dev-002/subnets/snet-pe-tf-demo-dev-002"
+    privateLinkServiceConnections = new Listing { new privateendpoint.PrivateLinkServiceConnection {
+        name = "sql-connection"
+        privateLinkServiceId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-002/providers/Microsoft.Sql/servers/sql-tf-demo-dev-002"
+        groupIds = new Listing { "sqlServer" }
+      } }
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new subnet.Subnet {
+    label = "snet-pe-tf-demo-dev-002"
+    name = "snet-pe-tf-demo-dev-002"
+    resourceGroupName = "rg-tf-demo-dev-002" // The target resource with the label = "vnet-tf-demo-dev-002" of type = "AZURE::Network::VirtualNetwork" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    virtualNetworkName = "vnet-tf-demo-dev-002" // The target resource with the label = "vnet-tf-demo-dev-002" of type = "AZURE::Network::VirtualNetwork" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    addressPrefix = "10.10.1.0/24"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new virtualnetwork.VirtualNetwork {
+    label = "vnet-tf-demo-dev-002"
+    name = "vnet-tf-demo-dev-002"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002" // The target resource with the label = "rg-tf-demo-dev-002" of type = "AZURE::Resources::ResourceGroup" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    addressSpace = new virtualnetwork.AddressSpace {
+      addressPrefixes = new Listing { "10.10.0.0/16" }
+    }
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new resourcegroup.ResourceGroup {
+    label = "rg-tf-demo-dev-002"
+    name = "rg-tf-demo-dev-002"
+    location = "westeurope"
+    tags = new Listing { new azure.Tag {
+      key = "drift_test"
+      value = "v1"
+    }; new azure.Tag {
+      key = "owner"
+      value = "alice"
+    } }
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new sqldatabase.Database {
+    label = "rg-tf-demo-dev-002-appdb"
+    name = "appdb"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002"
+    serverName = "sql-tf-demo-dev-002" // The target resource with the label = "sql-tf-demo-dev-002" of type = "AZURE::Sql::Server" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    sku = new sqldatabase.SKU {
+      name = "Basic"
+      tier = "Basic"
+      capacity = 5
+    }
+    collation = "SQL_Latin1_General_CP1_CI_AS"
+    maxSizeBytes = 2147483648
+    status = "Online"
+    databaseId = "2ed7e23e-4ba0-4c6f-9009-5e6af8a31cff"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new sqldatabase.Database {
+    label = "rg-tf-demo-dev-002-master"
+    name = "master"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002"
+    serverName = "sql-tf-demo-dev-002" // The target resource with the label = "sql-tf-demo-dev-002" of type = "AZURE::Sql::Server" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    sku = new sqldatabase.SKU {
+      name = "GP_SYSTEM"
+      tier = "System"
+      capacity = 4
+    }
+    collation = "SQL_Latin1_General_CP1_CI_AS"
+    maxSizeBytes = 107374182400
+    status = "Online"
+    databaseId = "24aa1a60-4ec7-4e66-a661-3b560e0caeb0"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new server.Server {
+    label = "sql-tf-demo-dev-002"
+    name = "sql-tf-demo-dev-002"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-002" // The target resource with the label = "rg-tf-demo-dev-002" of type = "AZURE::Resources::ResourceGroup" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    administratorLogin = "CloudSA2c28bc58"
+    version = "12.0"
+    minimalTlsVersion = "1.2"
+    publicNetworkAccess = "Disabled"
+    administrators = new server.Administrators {
+      login = "id-tf-demo-dev-002"
+      sid = "849d9600-5778-4805-8677-08e64c7c7f4c"
+      tenantId = "77347a0d-fdb5-4c51-9172-aaacde3216d4"
+      principalType = "Group"
+      azureADOnlyAuthentication = true
+    }
+    identity = new server.Identity {
+      type = "SystemAssigned"
+    }
+    fullyQualifiedDomainName = "sql-tf-demo-dev-002.database.windows.net"
+    state = "Ready"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new privatednszone.PrivateDnsZone {
+    label = "privatelink.database.windows.net-5"
+    name = "privatelink.database.windows.net"
+    location = "global"
+    resourceGroupName = new resourcegroup.ResourceGroupResolvable {
+      // RealValue: rg-tf-demo-dev-002
+      stack = "stack-tf-migration-dev" //resolvable
+      label = "rg-tf-demo-dev-002"
+    }.name
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+
+  new roleassignment.RoleAssignment {
+    label = "84eb1190-3e88-0a12-37d4-c12e9b688e27"
+    name = "84eb1190-3e88-0a12-37d4-c12e9b688e27"
+    scope = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-002"
+    principalId = "849d9600-5778-4805-8677-08e64c7c7f4c"
+    roleDefinitionId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
+    principalType = "ServicePrincipal"
+    description = "Demo: MI gets Reader on the resource group"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
+}

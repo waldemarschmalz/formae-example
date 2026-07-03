@@ -2,7 +2,10 @@ workload = "formae-demo"
 environment = "dev"
 
 stackName = "stack-\(workload)-\(environment)"
-subscriptionId = "7edc05f9-f6d6-451d-a516-8a6d4160986a"
+
+/// Target Azure subscription ID. No default — set this before running `formae eval`/`apply`
+/// so you can't accidentally deploy to the wrong tenant.
+subscriptionId: String(!isEmpty) = read("env:AZURE_SUBSCRIPTION_ID")
 
 /// Approved Azure regions for this demo. Any other value will fail eval.
 typealias AllowedLocation = "westeurope" | "northeurope" | "francecentral"

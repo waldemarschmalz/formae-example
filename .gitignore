@@ -148,6 +148,11 @@ Temporary Items
 *.icloud
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,macos
-/tf/.terraform/
 /.idea/
 /.claude/
+
+# Terraform
+part-1-intro/02-terraform-original/.terraform/
+part-1-intro/02-terraform-original/terraform.tfstate*
+part-1-intro/02-terraform-original/*.tfvars
+part-1-intro/02-terraform-original/crash.log

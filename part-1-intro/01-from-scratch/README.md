@@ -16,7 +16,13 @@ Names follow Azure CAF: `<abbr>-<workload>-<environment>-<instance>`.
 
 ## Configure
 
-Edit `vars.pkl` — `workload`, `environment`, `instance`, `location`, `subscriptionId`. Nothing else needs hand-curated IDs.
+`subscriptionId` in `vars.pkl` reads from the `AZURE_SUBSCRIPTION_ID` env var, so nothing tenant-specific is checked in. Export it before running any command:
+
+```bash
+export AZURE_SUBSCRIPTION_ID=<your-sub-id>
+```
+
+Edit `vars.pkl` if you want to change `workload`, `environment`, `instance`, or `location`. Nothing else needs hand-curated IDs.
 
 ## Apply
 
