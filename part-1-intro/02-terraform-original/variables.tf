@@ -18,7 +18,7 @@ variable "environment" {
 variable "instance" {
   description = "Instance number for the stack. Three digits."
   type        = string
-  default     = "002"
+  default     = "001"
 
   validation {
     condition     = can(regex("^\\d{3}$", var.instance))

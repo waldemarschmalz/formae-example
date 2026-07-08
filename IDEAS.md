@@ -4,6 +4,17 @@ Things that came up while drafting but don't belong in the post being written ri
 
 ---
 
+## part-2-agent-cicd
+
+### Formae agent in Azure
+https://docs.formae.io/en/latest/operations/install-azure/
+
+### Observability
+https://docs.formae.io/en/latest/operations/observability/
+
+### Security and networking
+https://docs.formae.io/en/latest/operations/security-networking/
+
 ## Splitting a stack across teams / lifecycles
 
 A future post (or a "scaling Formae" sidebar) on **when to break one `main.pkl` into multiple stacks**.

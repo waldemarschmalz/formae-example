@@ -1,6 +1,6 @@
 # Part 1 · From scratch — Azure SQL behind a Private Endpoint
 
-A nine-resource Formae stack that deploys an Azure SQL Server locked down to a private network, with a User-Assigned Managed Identity as its **only** admin. No passwords anywhere.
+An eleven-resource Formae stack that deploys an Azure SQL Server locked down to a private network, with a User-Assigned Managed Identity as its **only** admin. No passwords anywhere.
 
 ## What gets deployed
 
@@ -37,6 +37,34 @@ Or apply without watching, then check status:
 formae apply --mode reconcile --yes main.pkl
 formae status command --query 'client:me' --output-layout detailed
 ```
+
+## Patch: additive-only apply
+
+`--mode patch` creates and updates, but never deletes. Handy when you want to add a resource to a live stack without giving the CLI a chance to remove anything else — the reconcile contract inverts, and absence on other resources is left alone.
+
+Add a second database to `main.pkl` alongside `appdb`:
+
+```pkl
+new sqldatabase.Database {
+    label = "sqldb-logdb"
+    name = "logdb"
+    location = rg.location
+    resourceGroupName = rg.res.name
+    serverName = sqlServer.res.name
+    sku = new sqldatabase.SKU {
+        name = dbSkuName
+        tier = dbSkuTier
+    }
+}
+```
+
+Then apply just the delta:
+
+```bash
+formae apply --mode patch --yes --watch main.pkl
+```
+
+Only the new database is created; every other resource in the stack is untouched. The revealing follow-up: remove that block from `main.pkl` again and re-run `--mode reconcile`. It refuses — patch created drift from reconcile's checkpoint, and reconcile won't silently delete something it didn't know about. You either re-apply with `--force` (reconcile wins, `logdb` is deleted) or run `formae extract` to pull `logdb` into a forma file and delete it deliberately. Patch is fast; reconcile makes you acknowledge what patch did.
 
 ## Validate the constraints
 
