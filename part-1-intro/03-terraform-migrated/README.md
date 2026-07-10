@@ -29,7 +29,12 @@ Formae's agent scans every target it can reach on a fixed interval (~5 min by de
 formae inventory resources --query="managed:false label:*tf-demo-dev*"
 ```
 
-Should show 11 resources (10 you declared in TF plus the network interface that Azure auto-creates for the private endpoint). Two more — the private DNS zone (`privatelink.database.windows.net-2`) and the role assignment (a GUID) — are also discovered but don't match the `*tf-demo-dev*` wildcard. You'll pick them up separately.
+Should show 11 resources (10 you declared in TF plus the network interface that Azure auto-creates for the private endpoint). Two more — the private DNS zone and the role assignment — are also discovered, but don't match the `*tf-demo-dev*` wildcard. That's not a Formae quirk; it's Azure naming:
+
+- **Private DNS Zone** — for Private Endpoint to work against Azure SQL, the zone must be named exactly `privatelink.database.windows.net`. The name is fixed by the service, so no `tf-demo-dev` string to match on.
+- **Role Assignment** — Azure names role assignments with a random GUID (e.g. `26ed4d89-2633-f4a6-37b6-...`), and Formae's discovered label mirrors that GUID.
+
+You'll pick them up separately, by type instead of by label:
 
 ```bash
 formae inventory resources --query="managed:false type:AZURE::Network::PrivateDnsZone"
@@ -91,13 +96,13 @@ formae apply --mode reconcile --yes --watch --status-output-layout detailed disc
 | Creates the stack if it doesn't exist | Yes | No — fails with `patch can only modify existing stacks` |
 | Resource in cloud but not in Pkl | Destroyed | Left alone |
 | Collection entry (tag, etc.) in cloud but not in Pkl | Removed | Left alone |
-| Refuses if reality drifted since last apply | Yes (override with `--force`) | No — applies over drift silently |
+| Refuses if reality drifted since last apply | Yes (override with `--force`) | No — applies over drift; collections are append-only (existing entries preserved) |
 
 **When to reach for `reconcile` — the file is the truth.**
 Use it for the first apply (adoption creates the stack), for steady-state applies once you own the stack end-to-end, and any time you want cloud state to converge exactly to Pkl. Cost: it will delete resources and tag entries you removed from the file. Removing a resource block from Pkl is equivalent to `terraform destroy` on that resource. Step 3 above and the `--force` in Step 5's drift override both use this mode.
 
-**When to reach for `patch` — add without removing.**
-Use it when other tools or teams also write to the stack's resources and you don't want your apply to strip their additions. Example: a monitoring team's automation writes a `monitoring=enabled` tag onto every RG. If your Pkl doesn't mention that tag, `--mode reconcile` strips it every time you apply. `--mode patch` leaves it. Trade-off: `patch` won't create the stack, so it's unusable for the initial adoption in Step 3.
+**When to reach for `patch` — add without removing, even inside collections.**
+Use it when other tools or teams also write to the stack's resources and you don't want your apply to strip their additions. Example: a monitoring team's automation writes a `monitoring=enabled` tag onto every RG. Under `--mode reconcile`, if your Pkl doesn't list that tag, it gets stripped on every apply. Under `--mode patch`, the tag survives — patch merges collections append-only, so your entries are added and theirs stay put. Trade-off: `patch` won't create the stack, so it's unusable for the initial adoption in Step 3.
 
 Verify:
 
@@ -105,7 +110,7 @@ Verify:
 formae inventory resources --query="stack:stack-tf-migration-dev"
 ```
 
-You'll see **11** resources — the 10 you declared in TF plus the auto-created PE NIC. The DNS zone and the role assignment are still `managed:false` because the `label:*tf-demo-dev*` wildcard from step 2 didn't match them.
+You'll see **11** resources — the 10 you declared in TF plus the auto-created PE NIC. The DNS zone and the role assignment are still `managed:false` — Step 3b picks them up.
 
 ### Step 3b — Adopt the two outliers
 
