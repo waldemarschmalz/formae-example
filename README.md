@@ -92,4 +92,4 @@ The plugin version in the agent must match the version in `PklProject` — other
 
 ## Where to go next
 
-Start with [`part-1-intro/01-from-scratch/`](./part-1-intro/01-from-scratch/) — a nine-resource Azure stack that demonstrates every concept above end to end.
+Start with [`part-1-intro/01-from-scratch/`](./part-1-intro/01-from-scratch/) — an Azure stack that demonstrates every concept above end to end.
