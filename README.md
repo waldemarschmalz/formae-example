@@ -1,5 +1,7 @@
 # Formae by Example
 
+Here's my blog post: https://www.codecentric.de/en/knowledge-hub/blog/formae-part-1-stop-fighting-your-state-file
+
 Companion code for a blog series on [Formae](https://docs.formae.io/). Each part is a self-contained folder you can read top to bottom, eval, and apply.
 
 - `part-1-intro/` — Formae basics and a Terraform-to-Formae migration of an Azure stack.
