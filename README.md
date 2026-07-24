@@ -5,7 +5,7 @@ Here's my blog post: https://www.codecentric.de/en/knowledge-hub/blog/formae-par
 Companion code for a blog series on [Formae](https://docs.formae.io/). Each part is a self-contained folder you can read top to bottom, eval, and apply.
 
 - `part-1-intro/` — Formae basics and a Terraform-to-Formae migration of an Azure stack.
-- `part-2-agent-cicd/` — Adds a remote Formae agent, CI/CD, and Key Vault secrets. (planned)
+- `part-2-agent-cicd/` — Adds a remote Formae agent, CI/CD, and Observability (planned)
 - `part-3-mcp/` — Driving Formae through an MCP server. (planned)
 
 ---
