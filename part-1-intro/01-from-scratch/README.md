@@ -1,6 +1,6 @@
 # Part 1 · From scratch — Azure SQL behind a Private Endpoint
 
-An eleven-resource Formae stack that deploys an Azure SQL Server locked down to a private network, with a User-Assigned Managed Identity as its **only** admin. No passwords anywhere.
+An eleven-resource formae stack that deploys an Azure SQL Server locked down to a private network, with a User-Assigned Managed Identity as its **only** admin. No passwords anywhere.
 
 ## What gets deployed
 
@@ -35,7 +35,7 @@ Or apply without watching, then check status:
 
 ```bash
 formae apply --mode reconcile --yes main.pkl
-formae status command --query 'client:me' --output-layout detailed
+formae command status --query 'client:me' --output-layout detailed
 ```
 
 ## Patch: additive-only apply
