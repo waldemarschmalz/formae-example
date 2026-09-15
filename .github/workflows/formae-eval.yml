@@ -63,7 +63,7 @@ jobs:
 
       - name: Simulate (drift preview)
         run: |
-          formae apply --mode reconcile --simulate --profile bootstrap \
+          formae apply --mode reconcile --simulate --yes --profile bootstrap \
             part-2-agent-cicd/02-cicd/main.pkl
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
