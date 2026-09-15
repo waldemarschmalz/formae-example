@@ -23,7 +23,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install formae
-        run: curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
+        run: |
+          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
+          echo "/opt/pel" >> "$GITHUB_PATH"
 
       - name: Validate PKL (no agent contact)
         run: formae eval part-2-agent-cicd/02-cicd/main.pkl
