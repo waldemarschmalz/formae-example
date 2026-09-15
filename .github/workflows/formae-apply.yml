@@ -1,0 +1,82 @@
+name: formae · apply
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "part-2-agent-cicd/02-cicd/**"
+      - ".github/workflows/formae-*.yml"
+
+concurrency:
+  group: formae-apply
+  cancel-in-progress: false  # never cancel a running apply
+
+jobs:
+  apply:
+    name: Apply
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install formae
+        run: /bin/bash -c "$(curl -fsSL https://hub.platform.engineering/get/formae.sh)"
+
+      - name: Join Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Write agent profile
+        env:
+          FORMAE_AGENT_FQDN: ${{ secrets.FORMAE_AGENT_FQDN }}
+          FORMAE_API_PASSWORD: ${{ secrets.FORMAE_API_PASSWORD }}
+        run: |
+          mkdir -p ~/.config/formae/profiles
+          cat > ~/.config/formae/profiles/bootstrap.pkl << EOF
+          amends "formae:/Config.pkl"
+          import "formae:/Config.pkl" as Config
+          import "plugins:/AuthBasic.pkl" as AuthBasic
+          cli {
+            connection = new Config.Classic {
+              url = "https://${FORMAE_AGENT_FQDN}"
+              port = 49684
+              auth = new AuthBasic.CliConfig {
+                username = "formae"
+                password = "${FORMAE_API_PASSWORD}"
+              }
+            }
+          }
+          EOF
+
+      - name: Apply
+        id: apply
+        run: |
+          CMD_ID=$(formae apply --mode reconcile --yes --profile bootstrap \
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl \
+            | jq -r '.CommandId')
+          echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Wait for completion
+        run: |
+          CMD_ID="${{ steps.apply.outputs.cmd_id }}"
+          echo "Polling command ${CMD_ID} ..."
+          while :; do
+            STATE=$(formae command status "$CMD_ID" --profile bootstrap \
+              --output-consumer machine --output-schema json \
+              | jq -r '.Commands[0].State')
+            echo "  state: ${STATE}"
+            case "$STATE" in
+              Success)          echo "Apply succeeded."; break ;;
+              Failed|Canceled)  echo "Apply ${STATE}." >&2; exit 1 ;;
+              *)                sleep 10 ;;
+            esac
+          done

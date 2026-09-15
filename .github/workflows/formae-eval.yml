@@ -1,0 +1,67 @@
+name: formae · eval & simulate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "part-2-agent-cicd/02-cicd/**"
+      - ".github/workflows/formae-*.yml"
+
+concurrency:
+  group: formae-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: Eval & simulate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install formae
+        run: /bin/bash -c "$(curl -fsSL https://hub.platform.engineering/get/formae.sh)"
+
+      - name: Validate PKL (no agent contact)
+        run: formae eval part-2-agent-cicd/02-cicd/main.pkl
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Join Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Write agent profile
+        env:
+          FORMAE_AGENT_FQDN: ${{ secrets.FORMAE_AGENT_FQDN }}
+          FORMAE_API_PASSWORD: ${{ secrets.FORMAE_API_PASSWORD }}
+        run: |
+          mkdir -p ~/.config/formae/profiles
+          cat > ~/.config/formae/profiles/bootstrap.pkl << EOF
+          amends "formae:/Config.pkl"
+          import "formae:/Config.pkl" as Config
+          import "plugins:/AuthBasic.pkl" as AuthBasic
+          cli {
+            connection = new Config.Classic {
+              url = "https://${FORMAE_AGENT_FQDN}"
+              port = 49684
+              auth = new AuthBasic.CliConfig {
+                username = "formae"
+                password = "${FORMAE_API_PASSWORD}"
+              }
+            }
+          }
+          EOF
+
+      - name: Simulate (drift preview)
+        run: |
+          formae apply --mode reconcile --simulate --profile bootstrap \
+            part-2-agent-cicd/02-cicd/main.pkl
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
