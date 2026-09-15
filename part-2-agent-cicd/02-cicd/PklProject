@@ -2,12 +2,12 @@ amends "pkl:Project"
 
 dependencies {
   ["formae"] {
-    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.89.0"
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.90.0"
   }
   // In-repo examples resolve @azure against the LOCAL schema so they exercise
   // this plugin's current resource definitions (e.g. the KeyVault Secret),
   // rather than a published hub version. Mirrors the formae-plugin-aws examples.
   ["azure"] {
-    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.10"
+    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.14"
   }
 }

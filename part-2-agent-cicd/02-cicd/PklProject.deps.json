@@ -3,16 +3,16 @@
   "resolvedDependencies": {
     "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0": {
       "type": "remote",
-      "uri": "projectpackage://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.89.0",
+      "uri": "projectpackage://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.90.0",
       "checksums": {
-        "sha256": "08e6294a6300c9af580305456b4e8b3cf79453426abea72eb6375b84ea19aafe"
+        "sha256": "6da7234a8d9176a100f3aca55d6b92bb3d0afec5c239187b4f17deaafa4b9f3a"
       }
     },
     "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0": {
       "type": "remote",
-      "uri": "projectpackage://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.10",
+      "uri": "projectpackage://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.14",
       "checksums": {
-        "sha256": "09728390488e8032da77211dcfc304a6b7f76dc404b676245c1ecc45c49d9960"
+        "sha256": "d44c6e98559e47eba886e8ed1ba605d53c5f245ba55873004d60f11bc6318f2d"
       }
     }
   }
