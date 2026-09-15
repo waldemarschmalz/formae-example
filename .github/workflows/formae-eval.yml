@@ -64,6 +64,15 @@ jobs:
       - name: Simulate (drift preview)
         run: |
           formae apply --mode reconcile --simulate --yes --profile bootstrap \
-            part-2-agent-cicd/02-cicd/main.pkl
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl \
+            | jq -r '
+              if .ChangesRequired then
+                "Changes required:",
+                (.Command.ResourceUpdates[]
+                  | "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)")
+              else
+                "No changes required."
+              end'
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
