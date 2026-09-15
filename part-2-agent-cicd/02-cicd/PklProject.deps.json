@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "resolvedDependencies": {
+    "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0": {
+      "type": "remote",
+      "uri": "projectpackage://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.87.0",
+      "checksums": {
+        "sha256": "1293e8d9f297dfed879c33cf34fd46e183fe4d3e38c4acf6212f53b8f673435a"
+      }
+    },
+    "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0": {
+      "type": "remote",
+      "uri": "projectpackage://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.6",
+      "checksums": {
+        "sha256": "b9a87489c370da9ed3ffe1007aadef1699a4e33aa531b0c6cfebf08bcf2aeef2"
+      }
+    }
+  }
+}
