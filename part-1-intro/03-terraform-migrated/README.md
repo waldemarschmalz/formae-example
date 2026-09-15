@@ -82,10 +82,10 @@ That's expected: on first extraction, everything is unmanaged, so formae can't e
 Fill in the stack label. Optionally remove the `master` database block if it's present — see the gotcha note at the bottom of this page. Then:
 
 ```bash
-formae apply --mode reconcile --yes --watch --status-output-layout detailed discovered.pkl
+formae apply --mode reconcile --yes --status-output-layout detailed discovered.pkl
 ```
 
-`apply` is asynchronous — without `--watch`, it prints a command ID and returns immediately; you'd then run `formae command status --query='id:<that-id>' --output-layout detailed` to see progress. `--watch` blocks until the agent finishes and streams the same output live.
+`apply` is asynchronous — without `--status-output-layout detailed`, it prints a command ID and returns immediately; you'd then run `formae command status <id> --output-layout detailed` to see progress. `--status-output-layout detailed` streams the same output live.
 
 #### About `--mode reconcile` vs `--mode patch`
 
@@ -138,10 +138,10 @@ formae extract --query="managed:false type:AZURE::Network::PrivateDnsZone" ./dns
 formae extract --query="managed:false label:26ed4d89-2633-f4a6-37b6-0da90c7f5782" ./ra.pkl
 ```
 
-Copy the `PrivateDnsZone` and `RoleAssignment` blocks from those files into `discovered.pkl` (and add any missing `import` lines at the top). Re-apply with `--watch` again:
+Copy the `PrivateDnsZone` and `RoleAssignment` blocks from those files into `discovered.pkl` (and add any missing `import` lines at the top). Re-apply:
 
 ```bash
-formae apply --mode reconcile --yes --watch --status-output-layout detailed discovered.pkl
+formae apply --mode reconcile --yes --status-output-layout detailed discovered.pkl
 ```
 
 The output should be something like this:
@@ -189,7 +189,7 @@ formae extract --query='stack:stack-tf-migration-dev type:AZURE::Resources::Reso
 Two paths. **Reject the drift** (Pkl wins):
 
 ```bash
-formae apply --mode reconcile --yes --force --watch --status-output-layout detailed discovered.pkl
+formae apply --mode reconcile --yes --force --status-output-layout detailed discovered.pkl
 ```
 
 The `owner=alice` tag disappears from Azure. `az group show -n rg-tf-demo-dev-001 --query tags` reports only `drift_test`.

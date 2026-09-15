@@ -8,39 +8,39 @@ Things that came up while drafting but don't belong in the post being written ri
 
 **Throughline:** "from laptop demo to team setup" — what changes when you're no longer the one at the terminal?
 
-**Payoff moment (TBD, pick one):**
-- (a) Merge a PR and watch the remote agent execute the apply live.
-- (b) Out-of-band portal change → drift metric spikes in Grafana → next CI apply fails and you see *why* in the trace. Builds directly on Part 1.
+**Payoff moment: (b) — decided 2026-09-14**
+Out-of-band portal change → drift metric spikes in Grafana → next CI apply surfaces the drift in the PR check → developer sees exactly what drifted and why → merge reconciles everything.
+Reason: all three chapters are load-bearing. Agent = continuous watcher. CI = surfaces drift to developer. Observability = makes it visible before it's an incident. Closes Part 1's drift story.
 
 ### In scope
 
-- **Formae agent on Azure** — Container Apps vs. ACI (decision open, ACA leaning). Managed Identity for cloud permissions, persistent storage for the Formae DB, VNet-integrated or public+IP-allowlisted.
-- **Secrets via Key Vault** — the agent's env (`AZURE_SUBSCRIPTION_ID` etc.) now comes from Key Vault instead of `.env`. Uses the same user-assigned MI pattern from Part 1.
+- **formae agent on Azure** — official `formae-bootstrap` installer, pinned at a commit (VM + agent container + Postgres Flexible Server via private endpoint + VNet/NSG + egress public IP). Access modes: `public` (self-signed, `--allowed-cidr`), `appgw` (App Gateway + Key Vault cert + domain), `tailnet` (private, Tailscale, trusted cert). Agent operates Azure with a scoped SP; creds ride the CustomScript's `protectedSettings` (no VM managed-identity in plugin yet). Replaces the earlier "Container Apps vs. ACI" framing.
 - **CI/CD with GitHub Actions** — OIDC federation between GitHub Actions and Azure (no long-lived secret in the repo). `on: pull_request` → `formae eval`. `on: push` to `main` → `formae apply --mode reconcile`. PR comment with command ID after merge.
-- **Observability** — Managed Grafana + Azure Monitor Workspace, chosen because Formae ships pre-built Grafana dashboards (visual payoff). OTel Collector as sidecar in the ACA container. Screenshot of the Formae dashboard after the first CI-triggered apply.
+- **Observability** — Managed Grafana + Azure Monitor Workspace, chosen because formae ships pre-built Grafana dashboards (visual payoff). OTel Collector as sidecar in the ACA container. Screenshot of the formae dashboard after the first CI-triggered apply.
 
 ### Chapter outline
 
 1. **Why now?** — recap Part 1's laptop-only scope. Three questions: where does the agent live, who triggers apply, how do you see it work.
-2. **The agent moves to the cloud** — ACA + MI + Key Vault + persistent storage.
+2. **The agent moves to the cloud** — VM + Postgres + private endpoint + service principal.
 3. **CI/CD with GitHub Actions** — OIDC federation, PR-eval + main-apply workflow, remote agent API.
-4. **Observability** — what Formae emits, OTel Collector wiring, Managed Grafana with pre-built dashboards.
+4. **Observability** — what formae emits, OTel Collector wiring, Managed Grafana with pre-built dashboards.
 5. **The payoff** — the chosen moment from above, closing the loop with Part 1's drift story.
 6. **What Part 2 does not cover** — see "Later parts" below.
 
 ### Reference docs
 
 - https://docs.formae.io/en/latest/operations/install-azure/
-- https://docs.formae.io/en/latest/formae-101/how-to-guides/cicd-integration/ (Formae's generic CI/CD, not GitHub-Actions-specific — we're on our own for the exact workflow YAML)
+- https://docs.formae.io/en/latest/formae-101/how-to-guides/cicd-integration/ (formae's generic CI/CD, not GitHub-Actions-specific — we're on our own for the exact workflow YAML)
 - https://docs.formae.io/en/latest/operations/security-networking/
 - https://docs.formae.io/en/latest/operations/observability/
 
-### Open questions to resolve before writing
+### Open questions — resolved 2026-09-14
 
-- **ACA vs. ACI** for the agent? ACA gives scaling + health probes with less ops; ACI is simpler and matches the `install-azure` docs more literally.
-- **Payoff moment** — (a) live-watching a CI apply, or (b) drift → Grafana → failed apply? (b) is stronger continuity from Part 1.
-- **Preview environments per PR** — tempting for CI/CD chapter, but likely inflates scope past a comfortable post length. Punt to Part 4?
-- **Migration note**: what happens to the local Formae DB when the agent moves to the cloud? Belongs as a short sidebar in ch. 2, not its own chapter.
+- **ACA vs. ACI** — ACI. Matches `install-azure` docs literally, less ops for blog post scope.
+- **Payoff moment** — (b). See above.
+- **Preview environments per PR** — punted to Part 4.
+- **Migration note** — sidebar in ch. 2: local formae DB stays local; remote agent gets its own Postgres. No migration needed, stacks are independent.
+- **Companion repo** — no vendoring of `formae-bootstrap`. Link + pin commit. Repo adds only: `.github/workflows/`, `03-observability/main.pkl`, READMEs, `scripts/setup-oidc.sh`.
 
 ---
 
@@ -48,7 +48,7 @@ Things that came up while drafting but don't belong in the post being written ri
 
 ### Part 2.5 (sidebar): Splitting a stack across teams / lifecycles
 
-A future post (or a "scaling Formae" sidebar) on **when to break one `main.pkl` into multiple stacks**.
+A future post (or a "scaling formae" sidebar) on **when to break one `main.pkl` into multiple stacks**.
 
 The honest criteria are about lifecycle, not size:
 
@@ -71,17 +71,17 @@ stacks/
 
 **Why not in `01-from-scratch/`:** nine resources, one team, one lifecycle, one reader trying to learn the basics. Splitting would mean three files, three `apply` invocations, and a cross-stack reference pattern to explain before the reader has internalised `.res` within a single stack. Ceremony for its own sake at this stage.
 
-**To verify before writing:** the exact Pkl syntax for referencing a resource managed by a *different* stack in the same Formae instance (as opposed to a fully unmanaged one). Discovery-based mechanism applies to both, but the accessor shape needs a working example.
+**To verify before writing:** the exact Pkl syntax for referencing a resource managed by a *different* stack in the same formae instance (as opposed to a fully unmanaged one). Discovery-based mechanism applies to both, but the accessor shape needs a working example.
 
 ### Part 4 candidates
 
-- Preview environments per PR (short-lived Formae stacks tied to PR lifecycle).
-- Fine-grained RBAC for the Formae agent across multiple stacks / subscriptions.
-- Blue/green or canary deployments with Formae's patch mode.
-- Formae + Terraform Cloud/backend interop — extending Part 1's co-existence theme.
+- Preview environments per PR (short-lived formae stacks tied to PR lifecycle).
+- Fine-grained RBAC for the formae agent across multiple stacks / subscriptions.
+- Blue/green or canary deployments with formae's patch mode.
+- formae + Terraform Cloud/backend interop — extending Part 1's co-existence theme.
 
 ### Not planned but worth noting if it comes up
 
-- **Backup/DR for the Formae state** — pure ops question, not a compelling blog story on its own.
-- **Multi-region Formae setup** — interesting but niche.
+- **Backup/DR for the formae state** — pure ops question, not a compelling blog story on its own.
+- **Multi-region formae setup** — interesting but niche.
 - **Cost management for the observability stack** — worth a one-liner in Part 2 (tear it down when done) but not a chapter.

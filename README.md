@@ -57,10 +57,10 @@ formae destroy --query 'stack:my-stack'
 
 `apply --mode reconcile` brings the live state in line with the file: creates what is missing, updates what drifted, deletes what was removed from the file. There is also `--mode patch` for additive changes that never delete.
 
-Add `--watch` to stream progress, or check after the fact with:
+Add `--status-output-layout detailed` to stream progress inline, or check after the fact with:
 
 ```bash
-formae command status --query 'client:me' --output-layout detailed
+formae command list --query 'client:me'
 ```
 
 ---
