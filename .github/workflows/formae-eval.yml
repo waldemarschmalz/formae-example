@@ -66,10 +66,12 @@ jobs:
           EOF
 
       - name: Simulate (drift preview)
+        id: simulate
         run: |
+          # --force: surface out-of-band changes instead of blocking with ReconcileRejected.
           # formae exits non-zero when ChangesRequired=false (DriftResolutionRejected).
           # Capture output regardless, then validate JSON before branching.
-          SIM=$(formae apply --mode reconcile --simulate --yes --profile bootstrap \
+          SIM=$(formae apply --mode reconcile --simulate --force --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
             part-2-agent-cicd/02-cicd/main.pkl) || true
           if ! echo "$SIM" | jq -re '.ChangesRequired != null' > /dev/null 2>&1; then
@@ -77,7 +79,10 @@ jobs:
             echo "$SIM" >&2
             exit 1
           fi
-          echo "$SIM" | jq -r '
+          DRIFT=$(echo "$SIM" | jq -r '.ChangesRequired')
+          echo "changes_required=${DRIFT}" >> "$GITHUB_OUTPUT"
+
+          SUMMARY=$(echo "$SIM" | jq -r '
             if .ChangesRequired then
               "Changes required:",
               (.Command.ResourceUpdates[] | (
@@ -88,6 +93,35 @@ jobs:
               ))
             else
               "No changes required."
-            end'
+            end')
+          echo "$SUMMARY"
+          echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY"       >> "$GITHUB_OUTPUT"
+          echo "EOF"            >> "$GITHUB_OUTPUT"
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DRIFT="${{ steps.simulate.outputs.changes_required }}"
+          if [ "$DRIFT" = "true" ]; then
+            ICON="⚠️"
+            TITLE="Changes required"
+          else
+            ICON="✅"
+            TITLE="No changes required"
+          fi
+          BODY="${ICON} **formae · ${TITLE}**
+
+\`\`\`
+${{ steps.simulate.outputs.summary }}
+\`\`\`
+
+*Triggered by \`${{ github.sha }}\` — merge to apply.*"
+
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --edit-last --body "$BODY" 2>/dev/null \
+            || gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
