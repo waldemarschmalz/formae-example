@@ -24,7 +24,11 @@ jobs:
 
       - name: Install formae
         run: |
-          curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
+          OS=$(uname | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | tr -d '_' | sed s/aarch64/arm64/)
+          curl -fsSL "https://hub.platform.engineering/get/binaries/${OS}-${ARCH}/pelmgr" \
+            -o /tmp/pelmgr && chmod +x /tmp/pelmgr
+          sudo /tmp/pelmgr install formae@0.90.0 --yes
           echo "/opt/pel/bin" >> "$GITHUB_PATH"
 
       - name: Validate PKL (no agent contact)
