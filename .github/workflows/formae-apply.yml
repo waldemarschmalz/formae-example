@@ -63,24 +63,41 @@ jobs:
       - name: Apply
         id: apply
         run: |
-          # Do NOT re-simulate here. The PR eval already created a review on the agent.
-          # Re-simulating conflicts with that review (stale-review error).
-          # Just run the real apply; it consumes the PR's review.
-          APPLY_OUT=$(formae apply --mode reconcile --yes --profile bootstrap \
+          # Simulate first to create a review token the agent requires.
+          # If simulate returns stale-review, a valid review from the PR eval
+          # already exists on the agent — skip directly to apply to consume it.
+          SIM=$(formae apply --mode reconcile --simulate --force --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
             part-2-agent-cicd/02-cicd/main.pkl) || true
-          if echo "$APPLY_OUT" | jq -re '.CommandId' > /dev/null 2>&1; then
-            CMD_ID=$(echo "$APPLY_OUT" | jq -r '.CommandId')
-            echo "Applying changes (command: ${CMD_ID}) ..."
-            echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
-          elif echo "$APPLY_OUT" | jq -re '.ChangesRequired == false' > /dev/null 2>&1; then
+
+          STALE=$(echo "$SIM" | jq -re 'if .data.Code == "stale-review" then "true" else "false" end' 2>/dev/null || echo "false")
+          DRIFT=$(echo "$SIM"  | jq -re '.ChangesRequired' 2>/dev/null || echo "")
+
+          if [ "$STALE" = "true" ]; then
+            echo "Existing review on agent is current — proceeding to apply."
+          elif [ "$DRIFT" = "false" ]; then
             echo "No changes — skipping apply."
             echo "cmd_id=" >> "$GITHUB_OUTPUT"
-          else
-            echo "Apply failed:" >&2
-            echo "$APPLY_OUT" >&2
+            exit 0
+          elif [ "$DRIFT" != "true" ]; then
+            echo "Simulate failed:" >&2
+            echo "$SIM" >&2
             exit 1
+          else
+            echo "$SIM" | jq -r '
+              "Planned changes:",
+              (.Command.ResourceUpdates[] | (
+                "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)",
+                (.Properties | to_entries[] |
+                  "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
+                )
+              ))'
           fi
+
+          CMD_ID=$(formae apply --mode reconcile --force --yes --profile bootstrap \
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl | jq -r '.CommandId')
+          echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
