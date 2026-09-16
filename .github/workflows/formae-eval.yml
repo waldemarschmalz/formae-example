@@ -67,21 +67,27 @@ jobs:
 
       - name: Simulate (drift preview)
         run: |
-          set -o pipefail
-          formae apply --mode reconcile --simulate --yes --profile bootstrap \
+          # formae exits non-zero when ChangesRequired=false (DriftResolutionRejected).
+          # Capture output regardless, then validate JSON before branching.
+          SIM=$(formae apply --mode reconcile --simulate --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl \
-            | jq -r '
-              if .ChangesRequired then
-                "Changes required:",
-                (.Command.ResourceUpdates[] | (
-                  "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)",
-                  (.Properties | to_entries[] |
-                    "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
-                  )
-                ))
-              else
-                "No changes required."
-              end'
+            part-2-agent-cicd/02-cicd/main.pkl) || true
+          if ! echo "$SIM" | jq -re '.ChangesRequired != null' > /dev/null 2>&1; then
+            echo "Simulate failed (no valid JSON):" >&2
+            echo "$SIM" >&2
+            exit 1
+          fi
+          echo "$SIM" | jq -r '
+            if .ChangesRequired then
+              "Changes required:",
+              (.Command.ResourceUpdates[] | (
+                "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)",
+                (.Properties | to_entries[] |
+                  "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
+                )
+              ))
+            else
+              "No changes required."
+            end'
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

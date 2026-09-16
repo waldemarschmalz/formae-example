@@ -68,11 +68,6 @@ forma {
         label = "rg-\(suffix)"
         name = label
         location = stackLocation
-        tags = new Listing {
-            new azure.Tag { key = "env"; value = "dev" }
-            new azure.Tag { key = "managed-by"; value = "formae" }
-            new azure.Tag { key = "project"; value = "formae-demo" }
-        }
     }
 
     rg
