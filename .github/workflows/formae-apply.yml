@@ -63,10 +63,14 @@ jobs:
       - name: Apply
         id: apply
         run: |
-          set -o pipefail
+          set +e
           OUTPUT=$(formae apply --mode reconcile --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl 2>&1) || true
+            part-2-agent-cicd/02-cicd/main.pkl)
+          EXIT=$?
+          set -e
+          echo "formae exit: ${EXIT}"
+          echo "output: ${OUTPUT}"
           CMD_ID=$(echo "$OUTPUT" | jq -r '.CommandId // empty')
           if [ -z "$CMD_ID" ]; then
             echo "No changes required."
