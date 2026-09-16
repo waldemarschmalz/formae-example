@@ -63,16 +63,10 @@ jobs:
       - name: Apply
         id: apply
         run: |
-          # formae exits non-zero when ChangesRequired=false (DriftResolutionRejected).
-          # Capture output regardless, then validate JSON before branching.
+          set -o pipefail
           SIM=$(formae apply --mode reconcile --simulate --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl) || true
-          if ! echo "$SIM" | jq -re '.ChangesRequired != null' > /dev/null 2>&1; then
-            echo "Simulate failed (no valid JSON):" >&2
-            echo "$SIM" >&2
-            exit 1
-          fi
+            part-2-agent-cicd/02-cicd/main.pkl)
           DRIFT=$(echo "$SIM" | jq -r '.ChangesRequired')
           echo "changes required: ${DRIFT}"
           if [ "$DRIFT" = "false" ]; then
