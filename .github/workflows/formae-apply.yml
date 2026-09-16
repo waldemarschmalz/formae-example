@@ -63,19 +63,18 @@ jobs:
       - name: Apply
         id: apply
         run: |
-          set +e
-          OUTPUT=$(formae apply --mode reconcile --yes --profile bootstrap \
+          set -o pipefail
+          DRIFT=$(formae apply --mode reconcile --simulate --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl)
-          EXIT=$?
-          set -e
-          echo "formae exit: ${EXIT}"
-          echo "output: ${OUTPUT}"
-          CMD_ID=$(echo "$OUTPUT" | jq -r '.CommandId // empty')
-          if [ -z "$CMD_ID" ]; then
-            echo "No changes required."
+            part-2-agent-cicd/02-cicd/main.pkl | jq -r '.ChangesRequired')
+          echo "changes required: ${DRIFT}"
+          if [ "$DRIFT" = "false" ]; then
+            echo "No changes — skipping apply."
             echo "cmd_id=" >> "$GITHUB_OUTPUT"
           else
+            CMD_ID=$(formae apply --mode reconcile --yes --profile bootstrap \
+              --output-consumer machine --output-schema json \
+              part-2-agent-cicd/02-cicd/main.pkl | jq -r '.CommandId')
             echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
           fi
         env:
