@@ -105,11 +105,8 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          DRIFT: ${{ steps.simulate.outputs.changes_required }}
-          SUMMARY: ${{ steps.simulate.outputs.summary }}
-          SHA: ${{ github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          DRIFT="${{ steps.simulate.outputs.changes_required }}"
           if [ "$DRIFT" = "true" ]; then
             ICON="⚠️"
             TITLE="Changes required"
@@ -117,7 +114,14 @@ jobs:
             ICON="✅"
             TITLE="No changes required"
           fi
-          printf '%s **formae · %s**\n\n```\n%s\n```\n\n*Triggered by `%s` — merge to apply.*\n' \
-            "$ICON" "$TITLE" "$SUMMARY" "$SHA" > /tmp/pr-comment.md
-          gh pr comment "$PR_NUMBER" --edit-last --body-file /tmp/pr-comment.md 2>/dev/null \
-            || gh pr comment "$PR_NUMBER" --body-file /tmp/pr-comment.md
+          BODY="${ICON} **formae · ${TITLE}**
+
+\`\`\`
+${{ steps.simulate.outputs.summary }}
+\`\`\`
+
+*Triggered by \`${{ github.sha }}\` — merge to apply.*"
+
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --edit-last --body "$BODY" 2>/dev/null \
+            || gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
