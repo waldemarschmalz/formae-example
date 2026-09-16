@@ -67,6 +67,7 @@ jobs:
 
       - name: Simulate (drift preview)
         run: |
+          set -o pipefail
           formae apply --mode reconcile --simulate --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
             part-2-agent-cicd/02-cicd/main.pkl \
