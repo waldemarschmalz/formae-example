@@ -63,21 +63,26 @@ jobs:
       - name: Apply
         id: apply
         run: |
-          # formae exits non-zero when ChangesRequired=false (DriftResolutionRejected).
-          # Capture output regardless, then validate JSON before branching.
+          # Simulate first to create a review token the agent requires.
+          # If simulate returns stale-review, a valid review from the PR eval
+          # already exists on the agent — skip directly to apply to consume it.
           SIM=$(formae apply --mode reconcile --simulate --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
             part-2-agent-cicd/02-cicd/main.pkl) || true
-          if ! echo "$SIM" | jq -re '.ChangesRequired != null' > /dev/null 2>&1; then
-            echo "Simulate failed (no valid JSON):" >&2
-            echo "$SIM" >&2
-            exit 1
-          fi
-          DRIFT=$(echo "$SIM" | jq -r '.ChangesRequired')
-          echo "changes required: ${DRIFT}"
-          if [ "$DRIFT" = "false" ]; then
+
+          STALE=$(echo "$SIM" | jq -re 'if .data.Code == "stale-review" then "true" else "false" end' 2>/dev/null || echo "false")
+          DRIFT=$(echo "$SIM"  | jq -re '.ChangesRequired' 2>/dev/null || echo "")
+
+          if [ "$STALE" = "true" ]; then
+            echo "Existing review on agent is current — proceeding to apply."
+          elif [ "$DRIFT" = "false" ]; then
             echo "No changes — skipping apply."
             echo "cmd_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$DRIFT" != "true" ]; then
+            echo "Simulate failed:" >&2
+            echo "$SIM" >&2
+            exit 1
           else
             echo "$SIM" | jq -r '
               "Planned changes:",
@@ -87,11 +92,12 @@ jobs:
                   "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
                 )
               ))'
-            CMD_ID=$(formae apply --mode reconcile --yes --profile bootstrap \
-              --output-consumer machine --output-schema json \
-              part-2-agent-cicd/02-cicd/main.pkl | jq -r '.CommandId')
-            echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
           fi
+
+          CMD_ID=$(formae apply --mode reconcile --yes --profile bootstrap \
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl | jq -r '.CommandId')
+          echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
