@@ -68,31 +68,27 @@ jobs:
       - name: Simulate (drift preview)
         id: simulate
         run: |
-          # --force: surface out-of-band changes instead of blocking with ReconcileRejected.
-          # formae exits non-zero when ChangesRequired=false (DriftResolutionRejected).
-          # Capture output regardless, then validate JSON before branching.
+          # --force: surface out-of-band changes (ReconcileRejected) as drift instead of blocking.
+          # formae exits non-zero when ChangesRequired=false (DriftResolutionRejected) — capture first.
           SIM=$(formae apply --mode reconcile --simulate --force --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
             part-2-agent-cicd/02-cicd/main.pkl) || true
 
-          # stale-review: a pending review from a previous eval run already exists on the
-          # agent. State changed since it was created. Treat as "drift exists, review pending".
-          if echo "$SIM" | jq -re '.data.Code == "stale-review"' > /dev/null 2>&1; then
-            echo "A pending review already exists on the agent (state changed since last eval)."
-            echo "Merge to apply, or wait for the review to expire and re-run."
-            echo "changes_required=true"  >> "$GITHUB_OUTPUT"
-            SUMMARY="Changes required (pending review — re-run eval or merge to apply)."
-            echo "summary<<EOF"           >> "$GITHUB_OUTPUT"
-            echo "$SUMMARY"              >> "$GITHUB_OUTPUT"
-            echo "EOF"                   >> "$GITHUB_OUTPUT"
-            exit 0
+          ERROR=$(echo "$SIM" | jq -re '.error'     2>/dev/null || echo "")
+          CODE=$( echo "$SIM" | jq -re '.data.Code' 2>/dev/null || echo "")
+
+          if [ "$ERROR" = "DriftResolutionRejected" ] && [ "$CODE" = "stale-review" ]; then
+            echo "Stale review: a pending review already exists on the agent." >&2
+            echo "Either merge to apply, or wait for the previous review to expire and re-run." >&2
+            exit 1
           fi
 
           if ! echo "$SIM" | jq -re '.ChangesRequired != null' > /dev/null 2>&1; then
-            echo "Simulate failed (no valid JSON):" >&2
+            echo "Simulate failed:" >&2
             echo "$SIM" >&2
             exit 1
           fi
+
           DRIFT=$(echo "$SIM" | jq -r '.ChangesRequired')
           echo "changes_required=${DRIFT}" >> "$GITHUB_OUTPUT"
 
@@ -116,7 +112,7 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Post PR comment
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.simulate.conclusion == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           DRIFT: ${{ steps.simulate.outputs.changes_required }}
