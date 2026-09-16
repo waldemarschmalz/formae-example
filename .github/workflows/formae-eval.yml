@@ -74,6 +74,20 @@ jobs:
           SIM=$(formae apply --mode reconcile --simulate --force --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
             part-2-agent-cicd/02-cicd/main.pkl) || true
+
+          # stale-review: a pending review from a previous eval run already exists on the
+          # agent. State changed since it was created. Treat as "drift exists, review pending".
+          if echo "$SIM" | jq -re '.data.Code == "stale-review"' > /dev/null 2>&1; then
+            echo "A pending review already exists on the agent (state changed since last eval)."
+            echo "Merge to apply, or wait for the review to expire and re-run."
+            echo "changes_required=true"  >> "$GITHUB_OUTPUT"
+            SUMMARY="Changes required (pending review — re-run eval or merge to apply)."
+            echo "summary<<EOF"           >> "$GITHUB_OUTPUT"
+            echo "$SUMMARY"              >> "$GITHUB_OUTPUT"
+            echo "EOF"                   >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if ! echo "$SIM" | jq -re '.ChangesRequired != null' > /dev/null 2>&1; then
             echo "Simulate failed (no valid JSON):" >&2
             echo "$SIM" >&2
