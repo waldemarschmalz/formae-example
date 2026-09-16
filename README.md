@@ -1,18 +1,18 @@
-# Formae by Example
+# formae by Example
 
 Here's my blog post: https://www.codecentric.de/en/knowledge-hub/blog/formae-part-1-stop-fighting-your-state-file
 
-Companion code for a blog series on [Formae](https://docs.formae.io/). Each part is a self-contained folder you can read top to bottom, eval, and apply.
+Companion code for a blog series on [formae](https://docs.formae.io/). Each part is a self-contained folder you can read top to bottom, eval, and apply.
 
-- `part-1-intro/` — Formae basics and a Terraform-to-Formae migration of an Azure stack.
-- `part-2-agent-cicd/` — Adds a remote Formae agent, CI/CD, and Key Vault secrets. (planned)
-- `part-3-mcp/` — Driving Formae through an MCP server. (planned)
+- `part-1-intro/` — formae basics and a Terraform-to-formae migration of an Azure stack.
+- `part-2-agent-cicd/` — Adds a remote formae agent, CI/CD, and Observability (planned)
+- `part-3-mcp/` — Driving formae through an MCP server. (planned)
 
 ---
 
 ## What is a `main.pkl`?
 
-A Formae stack is a single Pkl file (by convention `main.pkl`) that describes the desired infrastructure. There are four things to know:
+A formae stack is a single Pkl file (by convention `main.pkl`) that describes the desired infrastructure. There are four things to know:
 
 1. **Stack** — a logical group that owns the resources. Every `forma` needs one.
 2. **Target** — where the stack deploys (e.g. an Azure subscription). Replaces the provider blocks you know from Terraform.
@@ -57,10 +57,10 @@ formae destroy --query 'stack:my-stack'
 
 `apply --mode reconcile` brings the live state in line with the file: creates what is missing, updates what drifted, deletes what was removed from the file. There is also `--mode patch` for additive changes that never delete.
 
-Add `--watch` to stream progress, or check after the fact with:
+Add `--status-output-layout detailed` to stream progress inline, or check after the fact with:
 
 ```bash
-formae status command --query 'client:me' --output-layout detailed
+formae command list --query 'client:me'
 ```
 
 ---
@@ -68,7 +68,7 @@ formae status command --query 'client:me' --output-layout detailed
 ## Prerequisites
 
 - Azure CLI logged in and the right subscription selected (`az login`, `az account set --subscription <id>`).
-- A running Formae agent with the plugin you import:
+- A running formae agent with the plugin you import:
 
 ```bash
 sudo formae plugin install azure@0.1.6

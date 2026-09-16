@@ -1,6 +1,6 @@
 # Part 1 · Terraform original — Azure SQL behind a Private Endpoint
 
-The **starting point** for the migration story. Same eleven Azure resources as [`../01-from-scratch/`](../01-from-scratch/), written in Terraform + `hashicorp/azurerm ~> 4.0`. Deploy this first — [`../03-terraform-migrated/`](../03-terraform-migrated/) picks it up and puts Formae in front of it (synchronisation, discovery, drift/click-ops handling).
+The **starting point** for the migration story. Same eleven Azure resources as [`../01-from-scratch/`](../01-from-scratch/), written in Terraform + `hashicorp/azurerm ~> 4.0`. Deploy this first — [`../03-terraform-migrated/`](../03-terraform-migrated/) picks it up and puts formae in front of it (synchronisation, discovery, drift/click-ops handling).
 
 ## What gets deployed
 
@@ -81,4 +81,4 @@ Cost while running: ~€4.40/month (SQL Basic) + ~€7/month (Private Endpoint) 
 
 ## What's next
 
-Once this stack is deployed, head to [`../03-terraform-migrated/`](../03-terraform-migrated/) — that's where Formae discovers these resources, adopts them into a stack, and shows what happens when you edit them from the portal or from Terraform behind Formae's back.
+Once this stack is deployed, head to [`../03-terraform-migrated/`](../03-terraform-migrated/) — that's where formae discovers these resources, adopts them into a stack, and shows what happens when you edit them from the portal or from Terraform behind formae's back.

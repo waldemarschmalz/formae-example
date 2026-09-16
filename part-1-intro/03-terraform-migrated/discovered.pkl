@@ -1,34 +1,26 @@
-// Snapshot of `formae extract` output after adopting the stack from `02-terraform-original/`.
-// This is NOT a plug-and-play file — subscription ID, tenant ID, principal IDs, and the
-// role assignment's GUID all come from a specific run. When you deploy `02-` yourself and
-// extract, your file will look structurally identical but the GUIDs will differ.
-// Diff your own extraction against this file to see the same shape of cleanup: fill in
-// the stack label, drop the `master` database block, append the DNS zone and role
-// assignment (they're missed by the `label:*tf-demo-dev*` wildcard).
-amends "@formae/forma.pkl"
+extends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 
 // Resource imports
-import "@azure/authorization/roleassignment.pkl" as roleassignment
 import "@azure/managedidentity/userassignedidentity.pkl" as userassignedidentity
 import "@azure/network/networkinterface.pkl" as networkinterface
 import "@azure/network/privatednszonegroup.pkl" as privatednszonegroup
 import "@azure/network/privatednsvnetlink.pkl" as privatednsvnetlink
 import "@azure/network/privateendpoint.pkl" as privateendpoint
-import "@azure/network/privatednszone.pkl" as privatednszone
 import "@azure/resources/subnet.pkl" as subnet
 import "@azure/resources/virtualnetwork.pkl" as virtualnetwork
 import "@azure/resources/resourcegroup.pkl" as resourcegroup
 import "@azure/sql/sqldatabase.pkl" as sqldatabase
 import "@azure/sql/server.pkl" as server
 import "@azure/azure.pkl" as azure
+// Dependency imports
+import "@azure/network/privatednszone.pkl" as privatednszone
 
 forma {
 
   local myStack = new formae.Stack {
-    // Filled in by hand after extraction to bring the 12 resources under management.
-    label = "stack-tf-migration-dev"
-    description = "Adopted resources originally created by 02-terraform-original/."
+    // Please provide a stack to bring the resources in this Forma under management
+     label = "tf-resourece"
   }
   myStack
 
@@ -55,12 +47,12 @@ forma {
   }
 
   new networkinterface.NetworkInterface {
-    label = "pe-sql-tf-demo-dev-001.nic.1dd74925-23a3-4a6f-8739-5ced87958fd9"
-    name = "pe-sql-tf-demo-dev-001.nic.1dd74925-23a3-4a6f-8739-5ced87958fd9"
+    label = "pe-sql-tf-demo-dev-001.nic.60e56525-fde1-4c35-8bd9-b0052f92811b"
+    name = "pe-sql-tf-demo-dev-001.nic.60e56525-fde1-4c35-8bd9-b0052f92811b"
     location = "westeurope"
     resourceGroupName = "rg-tf-demo-dev-001" // The target resource with the label = "rg-tf-demo-dev-001-pe-sql-tf-demo-dev-2" of type = "AZURE::Resources::ResourceGroup" is not managed yet. Bring it under management first to convert this into a Resolvable.
     ipConfigurations = new Listing { new networkinterface.IPConfiguration {
-        name = "privateEndpointIpConfig.411585c0-6e42-40aa-8d77-f62716539c3f"
+        name = "privateEndpointIpConfig.9b171d13-a5c2-4e2f-9b18-d96c8a90701a"
         subnet = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-001/providers/Microsoft.Network/virtualNetworks/vnet-tf-demo-dev-001/subnets/snet-pe-tf-demo-dev-001"
         privateIPAllocationMethod = "Dynamic"
         primary = true
@@ -72,7 +64,7 @@ forma {
   }
 
   new privatednszonegroup.PrivateDnsZoneGroup {
-    label = "rg-tf-demo-dev-001-default-2"
+    label = "rg-tf-demo-dev-001-default-7"
     name = "default"
     resourceGroupName = "rg-tf-demo-dev-001"
     privateEndpointName = "pe-sql-tf-demo-dev-001"
@@ -88,8 +80,8 @@ forma {
     label = "link-tf-demo-dev-2"
     name = "link-tf-demo-dev-001"
     location = "global"
-    resourceGroupName = "rg-tf-demo-dev-001" // The target resource with the label = "privatelink.database.windows.net-2" of type = "AZURE::Network::PrivateDnsZone" is not managed yet. Bring it under management first to convert this into a Resolvable.
-    privateZoneName = "privatelink.database.windows.net" // The target resource with the label = "privatelink.database.windows.net-2" of type = "AZURE::Network::PrivateDnsZone" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    resourceGroupName = "rg-tf-demo-dev-001" // The target resource with the label = "privatelink.database.windows.net-10" of type = "AZURE::Network::PrivateDnsZone" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    privateZoneName = "privatelink.database.windows.net" // The target resource with the label = "privatelink.database.windows.net-10" of type = "AZURE::Network::PrivateDnsZone" is not managed yet. Bring it under management first to convert this into a Resolvable.
     virtualNetworkId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-001/providers/Microsoft.Network/virtualNetworks/vnet-tf-demo-dev-001"
     registrationEnabled = false
     target = bootstrapTargetAzure.res
@@ -146,7 +138,7 @@ forma {
   }
 
   new sqldatabase.Database {
-    label = "rg-tf-demo-dev-001-appdb-2"
+    label = "rg-tf-demo-dev-001-appdb-7"
     name = "appdb"
     location = "westeurope"
     resourceGroupName = "rg-tf-demo-dev-001"
@@ -159,29 +151,42 @@ forma {
     collation = "SQL_Latin1_General_CP1_CI_AS"
     maxSizeBytes = 2147483648
     status = "Online"
-    databaseId = "26ab6dde-8477-424b-b277-4262bea98421"
+    databaseId = "d6b8c8f1-4f4d-4811-8772-4653c36d86d8"
     target = bootstrapTargetAzure.res
     stack = myStack.res
   }
 
-  // Note: extract also produced a block for the `master` database (Azure's system DB).
-  // Removed by hand — reconciling a version of this file that doesn't include `master`
-  // would make formae try to delete it, and Azure would refuse the delete with
-  // `CannotUseReservedDatabaseName`. The server is fine either way, but the apply fails.
-  // Only the `appdb` we actually created is adopted here.
+  new sqldatabase.Database {
+    label = "rg-tf-demo-dev-001-master-7"
+    name = "master"
+    location = "westeurope"
+    resourceGroupName = "rg-tf-demo-dev-001"
+    serverName = "sql-tf-demo-dev-001" // The target resource with the label = "sql-tf-demo-dev-2" of type = "AZURE::Sql::Server" is not managed yet. Bring it under management first to convert this into a Resolvable.
+    sku = new sqldatabase.SKU {
+      name = "GP_SYSTEM"
+      tier = "System"
+      capacity = 4
+    }
+    collation = "SQL_Latin1_General_CP1_CI_AS"
+    maxSizeBytes = 107374182400
+    status = "Online"
+    databaseId = "4fb9ebe7-1368-4a1f-b2d0-d9e1af59af53"
+    target = bootstrapTargetAzure.res
+    stack = myStack.res
+  }
 
   new server.Server {
     label = "sql-tf-demo-dev-2"
     name = "sql-tf-demo-dev-001"
     location = "westeurope"
     resourceGroupName = "rg-tf-demo-dev-001" // The target resource with the label = "rg-tf-demo-dev-001-pe-sql-tf-demo-dev-2" of type = "AZURE::Resources::ResourceGroup" is not managed yet. Bring it under management first to convert this into a Resolvable.
-    administratorLogin = "CloudSA9af47b35"
+    administratorLogin = "CloudSA5d1b64f6"
     version = "12.0"
     minimalTlsVersion = "1.2"
     publicNetworkAccess = "Disabled"
     administrators = new server.Administrators {
       login = "id-tf-demo-dev-001"
-      sid = "daa8e57f-0a12-4a81-9410-6215f61564d2"
+      sid = "d4306d52-9e57-4c93-95aa-2eebf1eed27f"
       tenantId = "77347a0d-fdb5-4c51-9172-aaacde3216d4"
       principalType = "Group"
       azureADOnlyAuthentication = true
@@ -191,32 +196,6 @@ forma {
     }
     fullyQualifiedDomainName = "sql-tf-demo-dev-001.database.windows.net"
     state = "Ready"
-    target = bootstrapTargetAzure.res
-    stack = myStack.res
-  }
-
-  // The following two blocks came from separate `formae extract` calls: the wildcard
-  // query `label:*tf-demo-dev*` missed them because their labels don't match that pattern
-  // (a role assignment's label is a GUID, and a private DNS zone's label is a domain name).
-  // See README step 3 for the exact commands used to fetch each one.
-
-  new privatednszone.PrivateDnsZone {
-    label = "privatelink.database.windows.net-2"
-    name = "privatelink.database.windows.net"
-    location = "global"
-    resourceGroupName = "rg-tf-demo-dev-001"
-    target = bootstrapTargetAzure.res
-    stack = myStack.res
-  }
-
-  new roleassignment.RoleAssignment {
-    label = "1e8f8cef-952c-7cb6-893c-0a13fb6daaef"
-    name = "1e8f8cef-952c-7cb6-893c-0a13fb6daaef"
-    scope = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/resourceGroups/rg-tf-demo-dev-001"
-    principalId = "daa8e57f-0a12-4a81-9410-6215f61564d2"
-    roleDefinitionId = "/subscriptions/7edc05f9-f6d6-451d-a516-8a6d4160986a/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-    principalType = "ServicePrincipal"
-    description = "Demo: MI gets Reader on the resource group"
     target = bootstrapTargetAzure.res
     stack = myStack.res
   }

@@ -1,6 +1,6 @@
 # Part 1 · From scratch — Azure SQL behind a Private Endpoint
 
-An eleven-resource Formae stack that deploys an Azure SQL Server locked down to a private network, with a User-Assigned Managed Identity as its **only** admin. No passwords anywhere.
+An eleven-resource formae stack that deploys an Azure SQL Server locked down to a private network, with a User-Assigned Managed Identity as its **only** admin. No passwords anywhere.
 
 ## What gets deployed
 
@@ -28,14 +28,14 @@ Edit `vars.pkl` if you want to change `workload`, `environment`, `instance`, or 
 
 ```bash
 formae eval main.pkl                                       # render & validate locally
-formae apply --mode reconcile --yes --watch main.pkl       # deploy
+formae apply --mode reconcile --yes --status-output-layout detailed main.pkl       # deploy
 ```
 
 Or apply without watching, then check status:
 
 ```bash
 formae apply --mode reconcile --yes main.pkl
-formae status command --query 'client:me' --output-layout detailed
+formae command list --query 'client:me'
 ```
 
 ## Patch: additive-only apply
@@ -61,7 +61,7 @@ new sqldatabase.Database {
 Then apply just the delta:
 
 ```bash
-formae apply --mode patch --yes --watch main.pkl
+formae apply --mode patch --yes --status-output-layout detailed main.pkl
 ```
 
 Only the new database is created; every other resource in the stack is untouched. The revealing follow-up: remove that block from `main.pkl` again and re-run `--mode reconcile`. It refuses — patch created drift from reconcile's checkpoint, and reconcile won't silently delete something it didn't know about. You either re-apply with `--force` (reconcile wins, `logdb` is deleted) or run `formae extract` to pull `logdb` into a forma file and delete it deliberately. Patch is fast; reconcile makes you acknowledge what patch did.

@@ -23,7 +23,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install formae
-        run: curl -fsSL https://hub.platform.engineering/get/formae.sh | bash -s -- --yes
+        run: |
+          OS=$(uname | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | tr -d '_' | sed s/aarch64/arm64/)
+          curl -fsSL "https://hub.platform.engineering/get/binaries/${OS}-${ARCH}/pelmgr" \
+            -o /tmp/pelmgr && chmod +x /tmp/pelmgr
+          sudo /tmp/pelmgr install formae@0.90.0 standard --yes
+          echo "/opt/pel/bin" >> "$GITHUB_PATH"
 
       - name: Validate PKL (no agent contact)
         run: formae eval part-2-agent-cicd/02-cicd/main.pkl
@@ -61,7 +67,21 @@ jobs:
 
       - name: Simulate (drift preview)
         run: |
-          formae apply --mode reconcile --simulate --profile bootstrap \
-            part-2-agent-cicd/02-cicd/main.pkl
+          set -o pipefail
+          formae apply --mode reconcile --simulate --yes --profile bootstrap \
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl \
+            | jq -r '
+              if .ChangesRequired then
+                "Changes required:",
+                (.Command.ResourceUpdates[] | (
+                  "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)",
+                  (.Properties | to_entries[] |
+                    "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
+                  )
+                ))
+              else
+                "No changes required."
+              end'
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
