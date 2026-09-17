@@ -63,9 +63,43 @@ jobs:
       - name: Apply
         id: apply
         run: |
-          # --force: bypass synchronizer observations and revert out-of-band changes.
-          # No re-simulate here — the PR eval already created the review.
-          # DriftResolutionRejected means no changes; everything else is a real failure.
+          # Remote agent requires a simulate review before accepting apply.
+          # --force on simulate: surface out-of-band changes (ReconcileRejected) as drift.
+          # --force on apply: override stale-review when a prior PR eval review exists.
+          SIM=$(formae apply --mode reconcile --simulate --force --yes --profile bootstrap \
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl) || true
+
+          ERROR=$(echo "$SIM" | jq -re '.error'     2>/dev/null || echo "")
+          CODE=$( echo "$SIM" | jq -re '.data.Code' 2>/dev/null || echo "")
+          DRIFT=$(echo "$SIM" | jq -re '.ChangesRequired' 2>/dev/null || echo "")
+
+          if [ "$DRIFT" = "false" ]; then
+            echo "No changes — skipping apply."
+            echo "cmd_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$ERROR" != "DriftResolutionRejected" ] && [ -z "$DRIFT" ]; then
+            echo "Simulate failed:" >&2
+            echo "$SIM" >&2
+            exit 1
+          fi
+
+          # ChangesRequired=true or stale-review (existing PR eval review) — run real apply.
+          if [ "$CODE" = "stale-review" ]; then
+            echo "Stale review detected (prior PR eval review exists) — applying with --force."
+          else
+            echo "$SIM" | jq -r '
+              "Planned changes:",
+              (.Command.ResourceUpdates[] | (
+                "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)",
+                (.Properties | to_entries[] |
+                  "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
+                )
+              ))'
+          fi
+
           set +e
           formae apply --mode reconcile --force --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
@@ -73,10 +107,9 @@ jobs:
           EXIT=$?
           set -e
 
-          ERROR=$(jq -re '.error' /tmp/apply-out.json 2>/dev/null || echo "")
-
-          if [ "$ERROR" = "DriftResolutionRejected" ]; then
-            echo "No changes required."
+          APPLY_ERROR=$(jq -re '.error' /tmp/apply-out.json 2>/dev/null || echo "")
+          if [ "$APPLY_ERROR" = "DriftResolutionRejected" ]; then
+            echo "No changes after all — skipping."
             echo "cmd_id=" >> "$GITHUB_OUTPUT"
             exit 0
           fi

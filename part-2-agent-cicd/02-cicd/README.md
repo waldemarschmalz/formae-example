@@ -94,20 +94,24 @@ sensitive is checked into the repo.
 
 ## Workflow design decisions
 
-### Apply: no re-simulate, straight `--force`
+### Apply: simulate first, `--force` on both steps
 
-The apply workflow runs `formae apply --mode reconcile --force --yes` directly —
-it does **not** re-simulate before applying. Two reasons:
+The remote agent requires a simulate review before accepting an apply submission.
+`--force` alone does not bypass this requirement — it only suppresses the
+interactive out-of-band change prompt. Without a prior simulate, formae generates
+a local CMD_ID that the agent never registers ("command not found" on poll).
 
-1. **stale-review conflict** — the PR eval already created a review on the agent.
-   Re-simulating in the apply job conflicts with that review and returns
-   `DriftResolutionRejected/stale-review`, blocking the apply.
-2. **`--force` makes the review unnecessary** — it tells the agent to bypass the
-   review gate and apply current declared state unconditionally.
+The apply workflow therefore always runs simulate first:
 
-Only two outcomes handled in the apply step:
-- `DriftResolutionRejected` → no changes, exit 0 (not a failure)
-- Anything else non-zero → real failure, fail loud with raw output
+| Simulate result | Apply action |
+|---|---|
+| `ChangesRequired=true` | Fresh review created → apply with `--force` consumes it |
+| `stale-review` | Prior PR eval review exists → apply with `--force` overrides staleness |
+| `ChangesRequired=false` | No drift → skip apply, exit 0 |
+
+`--force` on the **real apply step** (not just simulate) is what makes the
+stale-review case work. Without it, the agent rejects the stale review and apply
+returns a phantom CMD_ID that polls as "command not found".
 
 ### Eval: stale-review = hard fail, not a silent swallow
 
