@@ -92,6 +92,44 @@ sensitive is checked into the repo.
 
 ---
 
+## Workflow design decisions
+
+### Apply: no re-simulate, straight `--force`
+
+The apply workflow runs `formae apply --mode reconcile --force --yes` directly —
+it does **not** re-simulate before applying. Two reasons:
+
+1. **stale-review conflict** — the PR eval already created a review on the agent.
+   Re-simulating in the apply job conflicts with that review and returns
+   `DriftResolutionRejected/stale-review`, blocking the apply.
+2. **`--force` makes the review unnecessary** — it tells the agent to bypass the
+   review gate and apply current declared state unconditionally.
+
+Only two outcomes handled in the apply step:
+- `DriftResolutionRejected` → no changes, exit 0 (not a failure)
+- Anything else non-zero → real failure, fail loud with raw output
+
+### Eval: stale-review = hard fail, not a silent swallow
+
+If the eval workflow returns `stale-review` (a prior review from an earlier eval
+run is still pending on the agent), the step fails with a clear message rather
+than swallowing it. This happens when the eval is re-triggered multiple times
+without an apply in between consuming the pending review.
+
+Fix: merge to apply (which clears the review), then re-run the eval if needed.
+
+### `--force` and out-of-band changes
+
+`--force` on the simulate step (`--force --simulate`) surfaces out-of-band
+changes (normally blocked as `ReconcileRejected` by the agent's synchronizer)
+so they appear as drift in the PR comment. Without `--force`, the synchronizer's
+pending observation would block the simulate entirely.
+
+`--force` on the real apply reverts those out-of-band changes to match declared
+state. The PR review is the human gate — merging is the explicit approval.
+
+---
+
 ## Optional: OIDC for direct Azure access
 
 The workflows above need no Azure credentials — all Azure calls go through the
