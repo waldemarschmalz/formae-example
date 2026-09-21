@@ -1,0 +1,142 @@
+# Copied verbatim from https://docs.formae.ai/documentation/guides/cicd
+# with the minimum plumbing our setup needs on top:
+#  - install: pelmgr pinning to 0.90.0 (matches our local + agent)
+#  - Tailscale: our agent lives on the tailnet
+#  - Classic profile: written at runtime from secrets
+name: formae · docs-example
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "part-2-agent-cicd/02-cicd/**"
+      - ".github/workflows/formae.yml"
+  push:
+    branches: [main]
+    paths:
+      - "part-2-agent-cicd/02-cicd/**"
+      - ".github/workflows/formae.yml"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install formae
+        run: |
+          OS=$(uname | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | tr -d '_' | sed s/aarch64/arm64/)
+          curl -fsSL "https://hub.platform.engineering/get/binaries/${OS}-${ARCH}/pelmgr" \
+            -o /tmp/pelmgr && chmod +x /tmp/pelmgr
+          sudo /tmp/pelmgr install formae@0.90.0 standard --yes
+          echo "/opt/pel/bin" >> "$GITHUB_PATH"
+
+      - name: Join Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Write agent profile
+        env:
+          FORMAE_AGENT_FQDN: ${{ secrets.FORMAE_AGENT_FQDN }}
+          FORMAE_API_PASSWORD: ${{ secrets.FORMAE_API_PASSWORD }}
+        run: |
+          mkdir -p ~/.config/formae/profiles
+          cat > ~/.config/formae/profiles/bootstrap.pkl << EOF
+          amends "formae:/Config.pkl"
+          import "formae:/Config.pkl" as Config
+          import "plugins:/AuthBasic.pkl" as AuthBasic
+          cli {
+            connection = new Config.Classic {
+              url = "https://${FORMAE_AGENT_FQDN}"
+              port = 49684
+              auth = new AuthBasic.CliConfig {
+                username = "formae"
+                password = "${FORMAE_API_PASSWORD}"
+              }
+            }
+          }
+          EOF
+
+      - name: Validate
+        run: formae eval --profile bootstrap part-2-agent-cicd/02-cicd/main.pkl
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Preview changes
+        run: formae apply --mode reconcile --simulate --profile bootstrap part-2-agent-cicd/02-cicd/main.pkl
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install formae
+        run: |
+          OS=$(uname | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | tr -d '_' | sed s/aarch64/arm64/)
+          curl -fsSL "https://hub.platform.engineering/get/binaries/${OS}-${ARCH}/pelmgr" \
+            -o /tmp/pelmgr && chmod +x /tmp/pelmgr
+          sudo /tmp/pelmgr install formae@0.90.0 standard --yes
+          echo "/opt/pel/bin" >> "$GITHUB_PATH"
+
+      - name: Join Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Write agent profile
+        env:
+          FORMAE_AGENT_FQDN: ${{ secrets.FORMAE_AGENT_FQDN }}
+          FORMAE_API_PASSWORD: ${{ secrets.FORMAE_API_PASSWORD }}
+        run: |
+          mkdir -p ~/.config/formae/profiles
+          cat > ~/.config/formae/profiles/bootstrap.pkl << EOF
+          amends "formae:/Config.pkl"
+          import "formae:/Config.pkl" as Config
+          import "plugins:/AuthBasic.pkl" as AuthBasic
+          cli {
+            connection = new Config.Classic {
+              url = "https://${FORMAE_AGENT_FQDN}"
+              port = 49684
+              auth = new AuthBasic.CliConfig {
+                username = "formae"
+                password = "${FORMAE_API_PASSWORD}"
+              }
+            }
+          }
+          EOF
+
+      # Docs "Gate the pipeline on the outcome" pattern
+      - name: Apply
+        id: apply
+        run: |
+          CMD_ID=$(formae apply --mode reconcile --yes --profile bootstrap \
+            --output-consumer machine --output-schema json \
+            part-2-agent-cicd/02-cicd/main.pkl \
+            | jq -r '.CommandId')
+          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Wait for completion
+        run: |
+          CMD_ID="${{ steps.apply.outputs.cmd_id }}"
+          while :; do
+            STATE=$(formae command status "$CMD_ID" --profile bootstrap \
+              --output-consumer machine --output-schema json \
+              | jq -r '.Commands[0].State')
+            case "$STATE" in
+              Success)          echo "apply succeeded"; break ;;
+              Failed|Canceled)  echo "apply $STATE"; exit 1 ;;
+              *)                sleep 5 ;;
+            esac
+          done
