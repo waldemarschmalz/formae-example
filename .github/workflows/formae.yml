@@ -115,19 +115,32 @@ jobs:
           }
           EOF
 
-      # Docs "Gate the pipeline on the outcome" pattern
+      # Docs "Gate the pipeline on the outcome" pattern +
+      # a 4-line guard for the no-op case (docs example crashes on it: formae
+      # exits 1 with DriftResolutionRejected when nothing needs applying, and
+      # the docs' one-liner then polls a null CommandId).
       - name: Apply
         id: apply
         run: |
-          CMD_ID=$(formae apply --mode reconcile --yes --profile bootstrap \
+          set +e
+          OUT=$(formae apply --mode reconcile --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl \
-            | jq -r '.CommandId')
-          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+            part-2-agent-cicd/02-cicd/main.pkl)
+          EXIT=$?
+          set -e
+          if [ "$EXIT" -ne 0 ] && [ "$(echo "$OUT" | jq -re '.error' 2>/dev/null)" = "DriftResolutionRejected" ]; then
+            echo "No changes to apply."
+            echo "cmd_id=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EXIT" -ne 0 ]; then
+            echo "Apply failed:" >&2; echo "$OUT" >&2; exit 1
+          fi
+          echo "cmd_id=$(echo "$OUT" | jq -r '.CommandId')" >> "$GITHUB_OUTPUT"
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Wait for completion
+        if: steps.apply.outputs.cmd_id != ''
         run: |
           CMD_ID="${{ steps.apply.outputs.cmd_id }}"
           while :; do
