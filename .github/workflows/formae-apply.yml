@@ -60,78 +60,69 @@ jobs:
           }
           EOF
 
+      # GitOps design: no --force. Portal drift fails the pipeline loud so a
+      # human can `formae extract` the drift into PKL and open a PR. PKL is the
+      # single source of truth; CI never silently overwrites out-of-band edits.
       - name: Apply
         id: apply
         run: |
-          # Remote agent requires a simulate review before accepting apply.
-          # --force on simulate: surface out-of-band changes (ReconcileRejected) as drift.
-          # --force on apply: override stale-review when a prior PR eval review exists.
-          SIM=$(formae apply --mode reconcile --simulate --force --yes --profile bootstrap \
-            --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl) || true
-
-          ERROR=$(echo "$SIM" | jq -re '.error'     2>/dev/null || echo "")
-          CODE=$( echo "$SIM" | jq -re '.data.Code' 2>/dev/null || echo "")
-          DRIFT=$(echo "$SIM" | jq -re '.ChangesRequired' 2>/dev/null || echo "")
-
-          if [ "$DRIFT" = "false" ]; then
-            echo "No changes — skipping apply."
-            echo "cmd_id=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$ERROR" != "DriftResolutionRejected" ] && [ -z "$DRIFT" ]; then
-            echo "Simulate failed:" >&2
-            echo "$SIM" >&2
-            exit 1
-          fi
-
-          # ChangesRequired=true or stale-review (existing PR eval review) — run real apply.
-          if [ "$CODE" = "stale-review" ]; then
-            echo "Stale review detected (prior PR eval review exists) — applying with --force."
-          else
-            echo "$SIM" | jq -r '
-              "Planned changes:",
-              (.Command.ResourceUpdates[] | (
-                "  \(.Operation | ascii_upcase)  \(.ResourceType)  \(.ResourceLabel)",
-                (.Properties | to_entries[] |
-                  "    \(.key): \(if (.value | type) == "object" then (.value | tostring) else .value end)"
-                )
-              ))'
-          fi
-
           set +e
-          formae apply --mode reconcile --force --yes --profile bootstrap \
+          formae apply --mode reconcile --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl > /tmp/apply-out.json
+            part-2-agent-cicd/02-cicd/main.pkl > /tmp/apply.json 2>&1
           EXIT=$?
           set -e
 
-          APPLY_ERROR=$(jq -re '.error' /tmp/apply-out.json 2>/dev/null || echo "")
-          if [ "$APPLY_ERROR" = "DriftResolutionRejected" ]; then
-            echo "No changes after all — skipping."
+          ERROR=$(jq -re '.error'      /tmp/apply.json 2>/dev/null || echo "")
+          CODE=$( jq -re '.data.Code'  /tmp/apply.json 2>/dev/null || echo "")
+
+          # No changes to apply — idempotent success.
+          if [ "$ERROR" = "DriftResolutionRejected" ]; then
+            echo "No changes to apply."
             echo "cmd_id=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if [ $EXIT -ne 0 ]; then
-            echo "Apply failed:" >&2
-            cat /tmp/apply-out.json >&2
+          # Portal drift blocks the apply. Surface it clearly and fail.
+          if [ "$ERROR" = "ReconcileRejected" ]; then
+            echo "::error title=Out-of-band drift detected::A managed resource was modified outside formae. CI will not silently overwrite it."
+            echo ""
+            echo "Drifted resources:"
+            jq -r '.data.ModifiedStacks | to_entries[] | .value.ModifiedResources[]
+                   | "  - \(.Type) \(.Label) (stack: \(.Stack))"' /tmp/apply.json
+            echo ""
+            echo "Next steps for the operator:"
+            echo "  1. Investigate the change (Azure Portal audit log)."
+            echo "  2. If the change should stay:"
+            echo "       formae extract --query 'stack:<stack> label:<label>' > drift.pkl"
+            echo "     merge drift.pkl into part-2-agent-cicd/02-cicd/main.pkl, open a PR."
+            echo "  3. If the change should be reverted:"
+            echo "       revert it in Azure Portal (or via 'az ...') then re-run this workflow."
             exit 1
           fi
 
-          CMD_ID=$(jq -r '.CommandId' /tmp/apply-out.json)
+          # Any other non-zero exit is an unexpected failure.
+          if [ $EXIT -ne 0 ]; then
+            echo "Apply failed unexpectedly:" >&2
+            cat /tmp/apply.json >&2
+            exit 1
+          fi
+
+          CMD_ID=$(jq -r '.CommandId' /tmp/apply.json)
+          if [ -z "$CMD_ID" ] || [ "$CMD_ID" = "null" ]; then
+            echo "Apply returned no CommandId — nothing dispatched." >&2
+            cat /tmp/apply.json >&2
+            exit 1
+          fi
+          echo "Dispatched command: $CMD_ID"
           echo "cmd_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Wait for completion
+        if: steps.apply.outputs.cmd_id != ''
         run: |
           CMD_ID="${{ steps.apply.outputs.cmd_id }}"
-          if [ -z "$CMD_ID" ]; then
-            echo "No changes — skipping poll."
-            exit 0
-          fi
           echo "Polling command ${CMD_ID} ..."
           while :; do
             STATE=$(formae command status "$CMD_ID" --profile bootstrap \

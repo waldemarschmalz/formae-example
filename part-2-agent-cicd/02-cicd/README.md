@@ -82,55 +82,73 @@ sensitive is checked into the repo.
 
 ## Payoff demo
 
-1. Stack is deployed (first apply via CI or local `formae apply`).
-2. Make an out-of-band change in the Azure Portal (e.g. change the SQL Server
-   `minimalTlsVersion` or add a tag to the resource group).
-3. Open any PR — the `--simulate` step shows the drift: which property,
-   old vs. new value.
-4. Merge the PR; `formae apply --mode reconcile` corrects the drift.
-5. The drift counter ticks in Grafana (see [`03-observability/`](../03-observability/README.md)).
+**Code-driven change (happy path):**
+1. Edit `main.pkl` — change a property, add a tag, whatever.
+2. Open a PR. Eval workflow posts a ⚠️ comment showing exactly what will change.
+3. Merge. Apply workflow runs → resources updated → done.
+
+**Portal drift (GitOps loop):**
+1. Someone edits a managed resource in the Azure Portal.
+2. Grafana drift counter ticks (see [`03-observability/`](../03-observability/README.md)).
+3. Next merge to `main` → apply pipeline fails with `ReconcileRejected` naming
+   the drifted resource.
+4. Operator decides:
+   - **Absorb** — `formae extract` the drifted resource, merge into `main.pkl`, PR, merge.
+   - **Revert** — undo the change in Azure (Portal or `az`), re-run the workflow.
+5. Either way ends with PKL and reality re-aligned, and the decision is
+   recorded in git.
 
 ---
 
 ## Workflow design decisions
 
-### Apply: simulate first, `--force` on both steps
+### GitOps: PKL is the source of truth, humans absorb portal drift
 
-The remote agent requires a simulate review before accepting an apply submission.
-`--force` alone does not bypass this requirement — it only suppresses the
-interactive out-of-band change prompt. Without a prior simulate, formae generates
-a local CMD_ID that the agent never registers ("command not found" on poll).
+The apply workflow runs `formae apply --mode reconcile --yes` — **no `--force`**.
+Portal-side changes to managed resources block the apply with `ReconcileRejected`;
+the pipeline fails loudly and points the operator at the resolution path.
 
-The apply workflow therefore always runs simulate first:
+Rationale: silently overwriting an out-of-band change on every merge is exactly
+the terraform behavior formae was designed to improve on. The agent's
+synchronizer notices out-of-band edits precisely so a human can decide whether
+they were a mistake (revert them) or an intentional emergency fix (absorb them
+into PKL). CI is the wrong place for that decision.
 
-| Simulate result | Apply action |
+| Situation | Behavior |
 |---|---|
-| `ChangesRequired=true` | Fresh review created → apply with `--force` consumes it |
-| `stale-review` | Prior PR eval review exists → apply with `--force` overrides staleness |
-| `ChangesRequired=false` | No drift → skip apply, exit 0 |
+| PKL diff, no portal drift | Apply succeeds, resources updated |
+| No diff at all | `DriftResolutionRejected` → treated as success, exit 0 |
+| Portal drift on managed resource | `ReconcileRejected` → pipeline fails with instructions |
 
-`--force` on the **real apply step** (not just simulate) is what makes the
-stale-review case work. Without it, the agent rejects the stale review and apply
-returns a phantom CMD_ID that polls as "command not found".
+When the pipeline fails on drift, the operator either:
+1. **Revert in Azure** (Portal or `az`), then re-run the workflow, or
+2. **Absorb into PKL**: `formae extract --query 'stack:… label:…' > drift.pkl`,
+   merge into `main.pkl`, open a PR.
 
-### Eval: stale-review = hard fail, not a silent swallow
+### Eval: preview-only, `--simulate --force`
 
-If the eval workflow returns `stale-review` (a prior review from an earlier eval
-run is still pending on the agent), the step fails with a clear message rather
-than swallowing it. This happens when the eval is re-triggered multiple times
-without an apply in between consuming the pending review.
+The eval workflow uses `--simulate --force` for the PR drift preview. `--force`
+here does not mutate anything — simulate never writes — it only bypasses the
+CLI's interactive out-of-band prompt so the run can show what a merge *would*
+attempt.
 
-Fix: merge to apply (which clears the review), then re-run the eval if needed.
+| Simulate result | PR comment |
+|---|---|
+| `ChangesRequired=true` | ⚠️ shows planned changes |
+| `ChangesRequired=false` / no drift | ✅ "No changes required" |
+| `stale-review` | ⏳ "Prior review still pending; merge it or wait" |
 
-### `--force` and out-of-band changes
+### About `--resolution`
 
-`--force` on the simulate step (`--force --simulate`) surfaces out-of-band
-changes (normally blocked as `ReconcileRejected` by the agent's synchronizer)
-so they appear as drift in the PR comment. Without `--force`, the synchronizer's
-pending observation would block the simulate entirely.
+formae 0.90.0 has a `--resolution` flag intended for non-interactive drift
+decisions (JSON payload with `absorb`/`revert` per resource). At the time of
+writing it is undocumented and the CLI implementation does not work for the
+self-hosted (Classic) profile used here — it returns `Error: unsupported
+operation` before contacting the agent. The agent's REST API supports the
+mechanism, but wiring CI to raw REST felt like the wrong tradeoff for a demo:
+it hides the design intent behind an escape hatch.
 
-`--force` on the real apply reverts those out-of-band changes to match declared
-state. The PR review is the human gate — merging is the explicit approval.
+The GitOps flow above needs no such flag.
 
 ---
 
