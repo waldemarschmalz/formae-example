@@ -125,17 +125,39 @@ jobs:
           set +e
           OUT=$(formae apply --mode reconcile --yes --profile bootstrap \
             --output-consumer machine --output-schema json \
-            part-2-agent-cicd/02-cicd/main.pkl)
+            part-2-agent-cicd/02-cicd/main.pkl 2>&1)
           EXIT=$?
           set -e
-          if [ "$EXIT" -ne 0 ] && [ "$(echo "$OUT" | jq -re '.error' 2>/dev/null)" = "DriftResolutionRejected" ]; then
-            echo "No changes to apply."
+
+          echo "::group::formae apply — raw output (exit=$EXIT)"
+          echo "$OUT"
+          echo "::endgroup::"
+
+          ERROR=$(echo "$OUT" | jq -re '.error'      2>/dev/null || echo "")
+          CODE=$( echo "$OUT" | jq -re '.data.Code'  2>/dev/null || echo "")
+          CMD_ID=$(echo "$OUT" | jq -re '.CommandId' 2>/dev/null || echo "")
+          echo "::group::parsed fields"
+          echo "exit    = $EXIT"
+          echo "error   = $ERROR"
+          echo "code    = $CODE"
+          echo "cmd_id  = $CMD_ID"
+          echo "::endgroup::"
+
+          if [ "$EXIT" -ne 0 ] && [ "$ERROR" = "DriftResolutionRejected" ]; then
+            echo "branch: no-op (DriftResolutionRejected) — skipping poll"
             echo "cmd_id=" >> "$GITHUB_OUTPUT"; exit 0
           fi
           if [ "$EXIT" -ne 0 ]; then
-            echo "Apply failed:" >&2; echo "$OUT" >&2; exit 1
+            echo "branch: apply failed"
+            echo "$OUT" >&2
+            exit 1
           fi
-          echo "cmd_id=$(echo "$OUT" | jq -r '.CommandId')" >> "$GITHUB_OUTPUT"
+          if [ -z "$CMD_ID" ] || [ "$CMD_ID" = "null" ]; then
+            echo "branch: exit=0 but no CommandId — unexpected"
+            echo "cmd_id=" >> "$GITHUB_OUTPUT"; exit 1
+          fi
+          echo "branch: dispatched — will poll $CMD_ID"
+          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
